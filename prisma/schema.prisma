@@ -1,0 +1,91 @@
+// Prisma schema for Viora Smart Academy (VSA).
+//
+// Running on Supabase Postgres (eu-west-1).
+//   DATABASE_URL = pooled (port 6543) — used at runtime by serverless funcs.
+//   DIRECT_URL   = direct (port 5432) — used for migrations / db push.
+// Both env values live in `.env` locally and in Vercel project settings.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id         String     @id @default(cuid())
+  email      String     @unique
+  name       String
+  passwordHash String?
+  plan       String     @default("free") // free | pro | family
+  role       String     @default("user") // user | admin
+  streak     Int        @default(0)
+  lastActive DateTime   @default(now())
+  createdAt  DateTime   @default(now())
+  progress   Progress[]
+  attempts   Attempt[]
+  messages   ChatMessage[]
+  snapshots  BoardSnapshot[]
+}
+
+model Lesson {
+  id          String     @id @default(cuid())
+  slug        String     @unique
+  title       String
+  topic       String
+  durationSec Int
+  isPro       Boolean    @default(false)
+  // Lesson script JSON (LessonScript)
+  script      String     // JSON-encoded
+  createdAt   DateTime   @default(now())
+  progress    Progress[]
+  attempts    Attempt[]
+  messages    ChatMessage[]
+  snapshots   BoardSnapshot[]
+}
+
+model Progress {
+  id          String   @id @default(cuid())
+  userId      String
+  lessonId    String
+  score       Int      @default(0)
+  completedAt DateTime?
+  user        User     @relation(fields: [userId], references: [id])
+  lesson      Lesson   @relation(fields: [lessonId], references: [id])
+  @@unique([userId, lessonId])
+}
+
+model Attempt {
+  id        String   @id @default(cuid())
+  userId    String
+  lessonId  String
+  score     Int
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+  lesson    Lesson   @relation(fields: [lessonId], references: [id])
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  userId    String
+  lessonId  String?
+  role      String   // user | assistant | system
+  content   String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+  lesson    Lesson?  @relation(fields: [lessonId], references: [id])
+}
+
+model BoardSnapshot {
+  id        String   @id @default(cuid())
+  uuid      String   @unique
+  userId    String?
+  lessonId  String?
+  stateJson String
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id])
+  lesson    Lesson?  @relation(fields: [lessonId], references: [id])
+}
