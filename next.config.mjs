@@ -1,6 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Don't fail prod builds on lint warnings — Vercel runs ESLint by default
+  // and we don't want a stale ESLint plugin missing on CI to break deploys.
+  eslint: { ignoreDuringBuilds: true },
   experimental: {
     serverComponentsExternalPackages: ['@prisma/client', 'prisma'],
   },
