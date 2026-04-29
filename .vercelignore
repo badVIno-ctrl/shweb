@@ -1,0 +1,22 @@
+# Local env files — never upload, always set via Vercel UI
+.env
+.env.local
+.env.*.local
+
+# Local DB / cache / build artefacts
+*.db
+*.db-journal
+.next
+node_modules
+out
+coverage
+
+# Editor / OS
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
