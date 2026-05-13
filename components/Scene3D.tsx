@@ -20,10 +20,17 @@ import {
   Eraser,
   Undo2,
   Maximize2,
+  Minimize2,
   Plus,
   ChevronLeft,
   ChevronRight,
   LayoutGrid,
+  Expand,
+  Shrink,
+  Square,
+  Circle as CircleIcon,
+  Triangle as TriangleIcon,
+  Minus as MinusIcon,
 } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { Teacher3D } from './Teacher3D';
@@ -39,7 +46,10 @@ interface Scene3DProps {
   showToolbar?: boolean;
 }
 
-const MARKER_COLORS = ['#FFD86B', '#7AE7C7', '#FF8FB1', '#A78BFA', '#FFFFFF'];
+// Bright, high-contrast marker palette for the dark (#0c1322) board.
+const MARKER_COLORS = ['#FFE04B', '#3DFFC6', '#FF5DA2', '#C4A2FF', '#FFFFFF', '#FF6B3D'];
+
+type Shape = 'marker' | 'line' | 'triangle' | 'circle' | 'square' | 'rect';
 const BOARD_OFFSET_X = 6;
 const BOARD_BASE: [number, number, number] = [2, 0.6, -0.4];
 
@@ -103,8 +113,12 @@ export const Scene3D = forwardRef(function Scene3D(
   const [avatarBroken, setAvatarBroken] = useState(false);
   const [marker, setMarker] = useState(false);
   const [color, setColor] = useState(MARKER_COLORS[0]);
+  const [shape, setShape] = useState<Shape>('marker');
   const [boards, setBoards] = useState<number[]>([0]);
   const [focused, setFocused] = useState(0);
+  const [isFs, setIsFs] = useState(false);
+  const [isNarrow, setIsNarrow] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
   const boardHandles = useRef<Record<number, BlackboardHandle | null>>({});
   const orbitRef = useRef<OrbitControlsImpl | null>(null);
 
@@ -120,6 +134,8 @@ export const Scene3D = forwardRef(function Scene3D(
         Object.values(boardHandles.current).forEach((h) => h?.setMarkerMode(on)),
       setMarkerColor: (c) =>
         Object.values(boardHandles.current).forEach((h) => h?.setMarkerColor(c)),
+      setShape: (s) =>
+        Object.values(boardHandles.current).forEach((h) => h?.setShape(s)),
       undoMarker: () => focusedHandle()?.undoMarker(),
       eraseUserStrokes: () => focusedHandle()?.eraseUserStrokes(),
     };
@@ -135,14 +151,41 @@ export const Scene3D = forwardRef(function Scene3D(
     } catch {
       setHasWebGL(false);
     }
+    const mq = window.matchMedia('(max-width: 640px)');
+    const sync = () => setIsNarrow(mq.matches);
+    sync();
+    mq.addEventListener?.('change', sync);
+    return () => mq.removeEventListener?.('change', sync);
   }, []);
+
+  // Keep local fullscreen state in sync with the browser's Fullscreen API.
+  useEffect(() => {
+    const onFs = () => setIsFs(document.fullscreenElement === containerRef.current);
+    document.addEventListener('fullscreenchange', onFs);
+    return () => document.removeEventListener('fullscreenchange', onFs);
+  }, []);
+
+  async function toggleFullscreen() {
+    const el = containerRef.current;
+    if (!el) return;
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else {
+        await el.requestFullscreen?.();
+      }
+    } catch {
+      /* user denied or unsupported */
+    }
+  }
 
   useEffect(() => {
     Object.values(boardHandles.current).forEach((h) => {
       h?.setMarkerMode(marker);
       h?.setMarkerColor(color);
+      h?.setShape?.(shape);
     });
-  }, [marker, color]);
+  }, [marker, color, shape]);
 
   // Ctrl+Z everywhere undoes the last marker stroke on the focused board.
   useEffect(() => {
@@ -202,26 +245,52 @@ export const Scene3D = forwardRef(function Scene3D(
     );
   }
 
+  // Wider FOV on phones so neither the teacher (x≈-1.6) nor the board (x≈2)
+  // get clipped at the edges of a tall portrait viewport.
+  const cameraFov = isNarrow ? 50 : 38;
+
   return (
-    <div className="relative h-full w-full" onContextMenu={(e) => e.preventDefault()}>
+    <div
+      ref={containerRef}
+      className="relative h-full w-full bg-bg-deep"
+      onContextMenu={(e) => e.preventDefault()}
+    >
       <Canvas
         shadows
+        // Force the render loop to keep ticking instead of relying on demand —
+        // some browsers skipped the first frame until window blur/focus
+        // (Alt+Tab) when using the default settings, leaving the teacher
+        // invisible on initial paint.
+        frameloop="always"
         dpr={typeof window !== 'undefined' ? Math.min(window.devicePixelRatio ?? 1, lowQ ? 1 : 2) : 1}
-        camera={{ position: [2, 0.6, 4.6], fov: 38 }}
+        camera={{ position: [2, 0.7, 4.6], fov: cameraFov }}
         gl={{ antialias: true, powerPreference: 'high-performance' }}
+        onCreated={(s) => {
+          // Belt-and-suspenders: explicitly request a render the moment the
+          // GL context is ready, so the very first frame is painted.
+          s.invalidate();
+        }}
       >
         <color attach="background" args={[starry ? '#06081a' : '#0A0E1A']} />
         <fog attach="fog" args={[starry ? '#06081a' : '#0A0E1A', 12, 40]} />
 
-        <ambientLight intensity={0.45} color={starry ? '#A78BFA' : '#ffffff'} />
+        {/* Three-point studio rig for soft, flattering light on the teacher:
+            • Key   — warm main from upper-front-left (casts shadow)
+            • Fill  — cool diffuse from lower-right to lift shadows
+            • Rim   — cold backlight from upper-back to separate silhouette */}
+        <ambientLight intensity={0.28} color={starry ? '#A78BFA' : '#ffffff'} />
         <directionalLight
-          position={[-3, 4, 3]}
-          intensity={1.1}
-          color={starry ? '#A78BFA' : '#ffffff'}
+          position={[-2.5, 3.5, 3]}
+          intensity={1.15}
+          color={starry ? '#e9e2ff' : '#fff4e0'}
           castShadow
-          shadow-mapSize={[1024, 1024]}
+          shadow-mapSize={[2048, 2048]}
+          shadow-bias={-0.00015}
         />
-        <directionalLight position={[3, 4, 2]} intensity={0.6} color="#7AE7C7" />
+        <directionalLight position={[2.8, 1.2, 2]} intensity={0.45} color="#b9d4ff" />
+        <directionalLight position={[0, 3.5, -3.5]} intensity={0.6} color="#7AE7C7" />
+        {/* Soft top ambience — simulates a diffuse overhead softbox. */}
+        <hemisphereLight args={[0xffffff, 0x0a0e1a, 0.35]} />
 
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.95, 0]} receiveShadow>
           <circleGeometry args={[40, 64]} />
@@ -306,6 +375,27 @@ export const Scene3D = forwardRef(function Scene3D(
               </ToolBtn>
               {marker && (
                 <>
+                  {/* Shape picker — adaptive, wraps on narrow screens. */}
+                  <div className="mx-1 flex flex-wrap items-center gap-0.5">
+                    <ToolBtn active={shape === 'marker'} onClick={() => setShape('marker')} title="Маркер">
+                      <Pen size={13} strokeWidth={2} />
+                    </ToolBtn>
+                    <ToolBtn active={shape === 'line'} onClick={() => setShape('line')} title="Прямая линия (Shift+ЛКМ — строго прямо)">
+                      <MinusIcon size={13} strokeWidth={2} />
+                    </ToolBtn>
+                    <ToolBtn active={shape === 'triangle'} onClick={() => setShape('triangle')} title="Треугольник">
+                      <TriangleIcon size={13} strokeWidth={2} />
+                    </ToolBtn>
+                    <ToolBtn active={shape === 'circle'} onClick={() => setShape('circle')} title="Круг">
+                      <CircleIcon size={13} strokeWidth={2} />
+                    </ToolBtn>
+                    <ToolBtn active={shape === 'square'} onClick={() => setShape('square')} title="Квадрат">
+                      <Square size={13} strokeWidth={2} />
+                    </ToolBtn>
+                    <ToolBtn active={shape === 'rect'} onClick={() => setShape('rect')} title="Прямоугольник">
+                      <Square size={13} strokeWidth={2} style={{ transform: 'scaleX(1.4)' }} />
+                    </ToolBtn>
+                  </div>
                   <div className="mx-1 flex items-center gap-1">
                     {MARKER_COLORS.map((c) => (
                       <button
@@ -314,12 +404,12 @@ export const Scene3D = forwardRef(function Scene3D(
                         onClick={() => setColor(c)}
                         aria-label={`цвет ${c}`}
                         className={
-                          'h-4 w-4 rounded-full border ' +
+                          'h-4 w-4 rounded-full border transition-transform hover:scale-110 active:scale-95 ' +
                           (color === c
                             ? 'border-white/80 ring-2 ring-aurora-2/40'
                             : 'border-white/30')
                         }
-                        style={{ background: c }}
+                        style={{ background: c, boxShadow: `0 0 8px ${c}66` }}
                       />
                     ))}
                   </div>
@@ -371,7 +461,14 @@ export const Scene3D = forwardRef(function Scene3D(
                 <ZoomOut size={14} strokeWidth={2} />
               </ToolBtn>
               <ToolBtn onClick={() => setFocused(0)} title="Сбросить вид">
-                <Maximize2 size={14} strokeWidth={2} />
+                <LayoutGrid size={14} strokeWidth={2} />
+              </ToolBtn>
+              <ToolBtn
+                onClick={toggleFullscreen}
+                title={isFs ? 'Выйти из полноэкранного режима' : 'Войти в полноэкранный режим'}
+                active={isFs}
+              >
+                {isFs ? <Shrink size={14} strokeWidth={2} /> : <Expand size={14} strokeWidth={2} />}
               </ToolBtn>
             </div>
           </div>

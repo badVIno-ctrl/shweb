@@ -29,6 +29,7 @@ import { apiFetch, getStoredUser, isPro, setStoredUser, type StoredUser } from '
 import { cn } from '@/lib/utils';
 import { VsaLogo } from '@/components/VsaLogo';
 import { SettingsModal } from '@/components/SettingsModal';
+import { OnboardingTour } from '@/components/OnboardingTour';
 
 interface Me {
   user: StoredUser & { plan: string; role: string; streak: number };
@@ -45,6 +46,11 @@ export default function Cabinet() {
   const [stage, setStage] = useState<Stage>('theory');
   const [watched, setWatched] = useState<Record<number, boolean>>({});
   const [mobileListOpen, setMobileListOpen] = useState(true);
+  // `mounted` gates any UI that depends on localStorage / cookies, so the
+  // server's first render (no auth) matches the client's first paint and we
+  // avoid a hydration mismatch ("Войти" → avatar with "?" initial).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const router = useRouter();
 
   function loadMe() {
@@ -72,9 +78,9 @@ export default function Cabinet() {
     } catch {/* ignore */}
   }
 
-  const stored = getStoredUser();
+  const stored = mounted ? getStoredUser() : null;
   const userIsPro = isPro({ plan: me?.plan, role: me?.role });
-  const isLoggedIn = !!stored?.id;
+  const isLoggedIn = mounted && !!stored?.id;
   const task = selected ? getTaskById(selected) : null;
   const watchedCount = useMemo(
     () => Object.values(watched).filter(Boolean).length,
@@ -413,6 +419,9 @@ export default function Cabinet() {
         user={me}
         onUpdated={loadMe}
       />
+
+      {/* First-visit tour — only once per device for logged-in PRO users. */}
+      {userIsPro && <OnboardingTour />}
     </main>
   );
 }

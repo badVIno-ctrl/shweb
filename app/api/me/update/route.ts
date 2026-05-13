@@ -4,11 +4,6 @@ import { getCurrentUser, hashPassword, verifyPassword } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
-interface RawUser {
-  id: string;
-  passwordHash: string | null;
-}
-
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user || user.name === 'Гость') {
@@ -25,22 +20,17 @@ export async function POST(req: Request) {
     if (body.newPassword.length < 6) {
       return NextResponse.json({ error: 'мин. 6 символов' }, { status: 400 });
     }
-    const rows = await prisma.$queryRawUnsafe<RawUser[]>(
-      'SELECT id, "passwordHash" FROM "User" WHERE id = $1 LIMIT 1',
-      user.id,
-    );
-    const cur = rows[0];
+    const cur = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { id: true, passwordHash: true },
+    });
     if (!cur) return NextResponse.json({ error: 'юзер не найден' }, { status: 404 });
     if (cur.passwordHash) {
       const ok = await verifyPassword(body.oldPassword ?? '', cur.passwordHash);
       if (!ok) return NextResponse.json({ error: 'неверный текущий пароль' }, { status: 401 });
     }
     const hash = await hashPassword(body.newPassword);
-    await prisma.$executeRawUnsafe(
-      'UPDATE "User" SET "passwordHash" = $1 WHERE id = $2',
-      hash,
-      user.id,
-    );
+    await prisma.user.update({ where: { id: user.id }, data: { passwordHash: hash } });
     return NextResponse.json({ ok: true });
   }
 
@@ -50,11 +40,7 @@ export async function POST(req: Request) {
     if (trimmed.length < 1 || trimmed.length > 32) {
       return NextResponse.json({ error: 'ник: 1–32 символа' }, { status: 400 });
     }
-    await prisma.$executeRawUnsafe(
-      'UPDATE "User" SET name = $1 WHERE id = $2',
-      trimmed,
-      user.id,
-    );
+    await prisma.user.update({ where: { id: user.id }, data: { name: trimmed } });
     return NextResponse.json({
       user: {
         id: user.id,

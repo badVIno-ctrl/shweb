@@ -16,12 +16,39 @@ import type { EgeTask } from '@/lib/ege-tasks';
 // Lazy-load Scene3D so it doesn't block first render and gracefully falls back
 const Scene3D = dynamic(() => import('./Scene3D').then((m) => m.Scene3D), {
   ssr: false,
-  loading: () => (
-    <div className="grid h-full w-full place-items-center text-text-muted">
-      Загружаю 3D-учителя…
-    </div>
-  ),
+  loading: () => <TeacherSkeleton />,
 });
+
+/**
+ * Skeleton placeholder for the 3D teacher: pulsing grey blocks that
+ * silhouette the future scene (board + figure + toolbar) so the UI doesn't
+ * feel empty while WebGL warms up.
+ */
+function TeacherSkeleton() {
+  return (
+    <div className="relative h-full w-full overflow-hidden bg-gradient-to-br from-bg-deep via-bg-elevated to-bg-deep">
+      {/* Board */}
+      <div className="absolute left-[20%] top-[10%] h-[55%] w-[60%] animate-pulse rounded-xl bg-white/[0.045]" />
+      {/* Teacher silhouette */}
+      <div className="absolute bottom-[5%] left-[8%] flex flex-col items-center gap-2">
+        <div className="h-12 w-12 animate-pulse rounded-full bg-white/[0.07]" />
+        <div className="h-24 w-16 animate-pulse rounded-2xl bg-white/[0.05]" />
+        <div className="h-16 w-14 animate-pulse rounded-xl bg-white/[0.04]" />
+      </div>
+      {/* Toolbar */}
+      <div className="absolute left-3 top-3 flex gap-1.5">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="h-7 w-7 animate-pulse rounded-md bg-white/[0.06]" />
+        ))}
+      </div>
+      <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
+        <div className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[11px] text-text-muted">
+          Готовим 3D-учителя Viora AI…
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const AVATAR_URL =
   process.env.NEXT_PUBLIC_DEFAULT_AVATAR ??

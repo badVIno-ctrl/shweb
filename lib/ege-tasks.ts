@@ -9,7 +9,7 @@ export interface EgeTask {
   description: string;
   primary: number; // первичных баллов
   approxTest: string; // диапазон тестовых
-  /** короткие подсказки для системного промта Mistral */
+  /** короткие подсказки для системного промта Viora AI */
   topicHint: string;
   /** «база» теории, если LLM недоступна */
   fallbackTheory: string;

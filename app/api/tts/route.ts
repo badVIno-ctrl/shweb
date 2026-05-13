@@ -10,8 +10,13 @@ export async function POST(req: Request) {
   };
   if (!text) return NextResponse.json({ error: 'text required' }, { status: 400 });
   if (!ttsServerAvailable) {
-    // signal client to fall back to Web Speech
-    return NextResponse.json({ error: 'server tts disabled' }, { status: 501 });
+    // No Yandex creds → return 204 (No Content) with a hint header so the
+    // client cleanly falls back to Web Speech without polluting dev logs
+    // with red 5xx-style entries.
+    return new NextResponse(null, {
+      status: 204,
+      headers: { 'X-TTS-Fallback': 'web-speech' },
+    });
   }
   try {
     const buf = await yandexTts(text, { voice });

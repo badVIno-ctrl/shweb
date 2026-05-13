@@ -74,7 +74,7 @@ export async function clientSpeak(
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, voice: options.voice }),
       });
-      if (res.ok) {
+      if (res.ok && res.status !== 204) {
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
         const audio = new Audio(url);

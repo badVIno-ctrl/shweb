@@ -86,7 +86,7 @@ export default async function OpenGraphImage() {
         </div>
 
         <div style={{ marginTop: 'auto', display: 'flex', gap: 16 }}>
-          {['Mistral AI', 'Three.js', 'Next.js 14'].map((tag) => (
+          {['Viora AI', 'Three.js', 'Next.js 14'].map((tag) => (
             <span
               key={tag}
               style={{

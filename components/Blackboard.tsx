@@ -18,6 +18,8 @@ import {
 } from '@/lib/board-renderer';
 import type { BoardCommand } from '@/lib/types';
 
+export type MarkerShape = 'marker' | 'line' | 'triangle' | 'circle' | 'square' | 'rect';
+
 export interface BlackboardHandle {
   exec: (cmd: BoardCommand) => void;
   reset: () => void;
@@ -26,6 +28,7 @@ export interface BlackboardHandle {
   loadState: (commands: BoardCommand[]) => void;
   setMarkerMode: (on: boolean) => void;
   setMarkerColor: (color: string) => void;
+  setShape: (shape: MarkerShape) => void;
   undoMarker: () => void;
   /** Wipe ONLY user marker strokes; keep teacher's theory drawings intact. */
   eraseUserStrokes: () => void;
@@ -54,12 +57,16 @@ export const Blackboard = forwardRef<BlackboardHandle, BlackboardProps>(function
   const drawingRef = useRef<{
     active: boolean;
     last: { x: number; y: number } | null;
+    start: { x: number; y: number } | null;
+    base: ImageData | null;
+    shift: boolean;
     snapshots: ImageData[];
-  }>({ active: false, last: null, snapshots: [] });
+  }>({ active: false, last: null, start: null, base: null, shift: false, snapshots: [] });
   /** Snapshot taken right after the last teacher command — the "theory" layer. */
   const theoryBaseRef = useRef<ImageData | null>(null);
   const markerOnRef = useRef(false);
-  const colorRef = useRef('#FFD86B');
+  const colorRef = useRef('#FFE04B');
+  const shapeRef = useRef<'marker' | 'line' | 'triangle' | 'circle' | 'square' | 'rect'>('marker');
   const [, force] = useState(0);
 
   const [boardCanvas, texture] = useMemo(() => {
@@ -132,6 +139,9 @@ export const Blackboard = forwardRef<BlackboardHandle, BlackboardProps>(function
     setMarkerColor: (color) => {
       colorRef.current = color;
     },
+    setShape: (s) => {
+      shapeRef.current = s;
+    },
     undoMarker: () => {
       const c = boardRef.current;
       const snaps = drawingRef.current.snapshots;
@@ -158,12 +168,112 @@ export const Blackboard = forwardRef<BlackboardHandle, BlackboardProps>(function
     if (drawingRef.current.snapshots.length > 30) drawingRef.current.snapshots.shift();
   }
 
+  /** Anti-aliased stroke style shared by marker and shape tools. */
+  function applyStrokeStyle(ctx: CanvasRenderingContext2D): void {
+    ctx.strokeStyle = colorRef.current;
+    ctx.fillStyle = colorRef.current;
+    ctx.lineWidth = 7;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.shadowColor = colorRef.current;
+    ctx.shadowBlur = 10;
+    ctx.imageSmoothingEnabled = true;
+    (ctx as CanvasRenderingContext2D & { imageSmoothingQuality?: ImageSmoothingQuality })
+      .imageSmoothingQuality = 'high';
+  }
+
+  /** Snap `p` to the 0°/45°/90° line anchored at `start` (for Shift-drag). */
+  function snapStraight(
+    start: { x: number; y: number },
+    p: { x: number; y: number },
+  ): { x: number; y: number } {
+    const dx = p.x - start.x;
+    const dy = p.y - start.y;
+    const adx = Math.abs(dx);
+    const ady = Math.abs(dy);
+    // 45° diagonal when within the cone, otherwise snap to axis.
+    const ratio = Math.min(adx, ady) / Math.max(adx, ady, 1);
+    if (ratio > 0.4) {
+      const m = Math.min(adx, ady);
+      return { x: start.x + Math.sign(dx) * m, y: start.y + Math.sign(dy) * m };
+    }
+    return adx > ady
+      ? { x: p.x, y: start.y }
+      : { x: start.x, y: p.y };
+  }
+
+  /** Paint the selected shape from `start` to `end` on top of `base`. */
+  function drawShape(
+    ctx: CanvasRenderingContext2D,
+    base: ImageData,
+    start: { x: number; y: number },
+    end: { x: number; y: number },
+  ): void {
+    ctx.putImageData(base, 0, 0);
+    ctx.save();
+    applyStrokeStyle(ctx);
+    const shape = shapeRef.current;
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    switch (shape) {
+      case 'line': {
+        ctx.beginPath();
+        ctx.moveTo(start.x, start.y);
+        ctx.lineTo(end.x, end.y);
+        ctx.stroke();
+        break;
+      }
+      case 'circle': {
+        const cx = (start.x + end.x) / 2;
+        const cy = (start.y + end.y) / 2;
+        const r = Math.hypot(dx, dy) / 2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.stroke();
+        break;
+      }
+      case 'square': {
+        const side = Math.max(Math.abs(dx), Math.abs(dy));
+        const x = start.x + (dx < 0 ? -side : 0);
+        const y = start.y + (dy < 0 ? -side : 0);
+        ctx.strokeRect(x, y, side, side);
+        break;
+      }
+      case 'rect': {
+        const x = Math.min(start.x, end.x);
+        const y = Math.min(start.y, end.y);
+        ctx.strokeRect(x, y, Math.abs(dx), Math.abs(dy));
+        break;
+      }
+      case 'triangle': {
+        ctx.beginPath();
+        ctx.moveTo((start.x + end.x) / 2, start.y);
+        ctx.lineTo(start.x, end.y);
+        ctx.lineTo(end.x, end.y);
+        ctx.closePath();
+        ctx.stroke();
+        break;
+      }
+      default:
+        break;
+    }
+    ctx.restore();
+  }
+
   function onDown(e: ThreeEvent<PointerEvent>) {
     if (!markerOnRef.current || !e.uv || !boardRef.current) return;
     e.stopPropagation();
     pushSnapshot();
+    const p = uvToPx(e.uv);
     drawingRef.current.active = true;
-    drawingRef.current.last = uvToPx(e.uv);
+    drawingRef.current.last = p;
+    drawingRef.current.start = p;
+    drawingRef.current.shift = !!(e.nativeEvent as PointerEvent).shiftKey;
+    // For shape tools we need the pre-draw pixels to redraw preview each frame.
+    if (shapeRef.current !== 'marker') {
+      const c = boardRef.current;
+      drawingRef.current.base = c.ctx.getImageData(0, 0, c.canvas.width, c.canvas.height);
+    }
   }
   function onMove(e: ThreeEvent<PointerEvent>) {
     if (
@@ -174,28 +284,38 @@ export const Blackboard = forwardRef<BlackboardHandle, BlackboardProps>(function
     )
       return;
     e.stopPropagation();
-    const p = uvToPx(e.uv);
-    const last = drawingRef.current.last;
+    drawingRef.current.shift = !!(e.nativeEvent as PointerEvent).shiftKey;
     const ctx = boardRef.current.ctx;
-    ctx.save();
-    ctx.strokeStyle = colorRef.current;
-    ctx.lineWidth = 7;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.shadowColor = colorRef.current;
-    ctx.shadowBlur = 8;
-    ctx.beginPath();
-    if (last) ctx.moveTo(last.x, last.y);
-    else ctx.moveTo(p.x, p.y);
-    ctx.lineTo(p.x, p.y);
-    ctx.stroke();
-    ctx.restore();
-    drawingRef.current.last = p;
+    let p = uvToPx(e.uv);
+    const start = drawingRef.current.start;
+    const shape = shapeRef.current;
+
+    if (shape === 'marker') {
+      // Freehand stroke; Shift forces a straight segment from the anchor.
+      if (start && drawingRef.current.shift) p = snapStraight(start, p);
+      const last = drawingRef.current.last;
+      ctx.save();
+      applyStrokeStyle(ctx);
+      ctx.beginPath();
+      if (last) ctx.moveTo(last.x, last.y);
+      else ctx.moveTo(p.x, p.y);
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+      ctx.restore();
+      drawingRef.current.last = p;
+    } else if (start && drawingRef.current.base) {
+      // Live shape preview: restore base + re-render the shape.
+      const end = drawingRef.current.shift ? snapStraight(start, p) : p;
+      drawShape(ctx, drawingRef.current.base, start, end);
+    }
     if (textureRef.current) textureRef.current.needsUpdate = true;
   }
   function onUp() {
     drawingRef.current.active = false;
     drawingRef.current.last = null;
+    drawingRef.current.start = null;
+    drawingRef.current.base = null;
+    drawingRef.current.shift = false;
   }
 
   if (!texture) return null;

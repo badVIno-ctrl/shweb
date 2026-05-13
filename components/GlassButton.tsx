@@ -20,10 +20,11 @@ export const GlassButton = forwardRef<HTMLButtonElement, GlassButtonProps>(funct
     <button
       ref={ref}
       className={cn(
-        'inline-flex items-center justify-center gap-2 rounded-glass border font-medium',
-        'transition-all duration-200 backdrop-blur-glass backdrop-saturate-150',
+        'inline-flex select-none items-center justify-center gap-2 rounded-glass border font-medium',
+        'transition-all duration-200 backdrop-blur-glass backdrop-saturate-150 will-change-transform',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aurora-2/60',
-        'hover:-translate-y-0.5 hover:shadow-glow disabled:opacity-50 disabled:pointer-events-none',
+        'hover:-translate-y-0.5 hover:shadow-glow active:translate-y-0 active:scale-[0.97]',
+        'disabled:opacity-50 disabled:pointer-events-none',
         sizeMap[size],
         variant === 'primary' &&
           'border-white/[0.10] bg-white/[0.06] text-text-primary hover:bg-white/[0.10]',

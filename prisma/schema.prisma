@@ -1,18 +1,17 @@
 // Prisma schema for Viora Smart Academy (VSA).
 //
-// Running on Supabase Postgres (eu-west-1).
-//   DATABASE_URL = pooled (port 6543) — used at runtime by serverless funcs.
-//   DIRECT_URL   = direct (port 5432) — used for migrations / db push.
-// Both env values live in `.env` locally and in Vercel project settings.
+// Local dev: SQLite (file at ./prisma/dev.db) — zero external services.
+//   DATABASE_URL = "file:./dev.db"
+// For production, swap provider to "postgresql" and point DATABASE_URL /
+// DIRECT_URL at your Postgres (e.g. Supabase pooled + direct connections).
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
 }
 
 model User {

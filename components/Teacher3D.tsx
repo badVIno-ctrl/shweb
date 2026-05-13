@@ -35,18 +35,21 @@ interface Props {
   audioEl: HTMLAudioElement | null;
 }
 
-// Palette
-const SKIN = '#f3c9a4';
-const SKIN_DARK = '#d99e7a';
-const HAIR = '#3a2418';
-const HAIR_HI = '#5a3826';
+// Palette — slightly warmer, richer than before so the teacher reads as alive
+// under the cool studio rim light.
+const SKIN = '#f5dcc4';
+const SKIN_DARK = '#f5dcc4';
+const BLUSH = '#e88a92';
+const HAIR = '#3d2418';
+const HAIR_HI = '#6b4a32';
 const BLAZER = '#3a2f63';
 const BLAZER_LIGHT = '#564890';
-const BLOUSE = '#f6e9d6';
+const BLOUSE = '#fbf1de';
 const SKIRT = '#231b3f';
 const ACCENT = '#A78BFA';
-const LIPS = '#b85c6c';
+const LIPS = '#c8616f';
 const EYE_DARK = '#191324';
+const IRIS = '#3f7aa8';
 const NAIL = '#c97487';
 const TIGHTS = '#1a1428';
 const SHOE = '#0f0d18';
@@ -103,7 +106,9 @@ export function Teacher3D({ action, audioEl }: Props) {
   useFrame((state, dt) => {
     const t = state.clock.elapsedTime;
 
-    // Subtle whole-body sway.
+    // Subtle whole-body sway. Breathing was attempted via torso.scale.y but
+    // that scaled the head/arms too and opened a visible gap between torso
+    // and skirt — kept as a TODO until rigged via per-mesh scale.
     if (root.current) {
       root.current.position.y = -0.95 + Math.sin(t * 1.2) * 0.012;
     }
@@ -133,8 +138,14 @@ export function Teacher3D({ action, audioEl }: Props) {
         lR = -0.10 + Math.sin(t * 0.9) * 0.03;
         lL = -0.10 + Math.sin(t * 0.9 + 0.6) * 0.03;
       }
-      armR.current.rotation.z = THREE.MathUtils.damp(armR.current.rotation.z, lR, 4, dt);
-      armL.current.rotation.z = THREE.MathUtils.damp(armL.current.rotation.z, -lL, 4, dt);
+      // Sign convention: rotation.z is applied so that POSITIVE values raise
+      // the arm OUTWARD-and-up. With the arm capsule hanging down at local
+      // (-y), rotating armR by +lR sends the hand to (+x, +y) — i.e. away
+      // from the face and toward the board on the right. armL is mirrored
+      // (negative). The previous version had armR.z = lR (a NEGATIVE value),
+      // which rotated the arm across the body and clipped through the head.
+      armR.current.rotation.z = THREE.MathUtils.damp(armR.current.rotation.z, -lR, 4, dt);
+      armL.current.rotation.z = THREE.MathUtils.damp(armL.current.rotation.z, lL, 4, dt);
       armR.current.rotation.x = THREE.MathUtils.damp(armR.current.rotation.x, swingR, 4, dt);
       armL.current.rotation.x = THREE.MathUtils.damp(armL.current.rotation.x, swingL, 4, dt);
     }
@@ -189,10 +200,27 @@ export function Teacher3D({ action, audioEl }: Props) {
   });
 
   // ---- Materials ----
-  const skinMat = useMemo(() => new THREE.MeshStandardMaterial({ color: SKIN, roughness: 0.6 }), []);
+  // Skin uses a hint of emissive in its own colour to fake subsurface warmth
+  // under cool stage lighting — without going full SSS shader.
+  // No emissive tint — even a faint dark-red emissive shifts the whole face
+  // toward brown under cool stage lighting.
+  const skinMat = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: SKIN,
+        // Higher roughness + envMapIntensity 0 makes the skin matte and
+        // immune to the warm 'city' Environment IBL that was tinting it.
+        roughness: 0.85,
+        metalness: 0,
+        envMapIntensity: 0,
+      }),
+    [],
+  );
   const skinDarkMat = useMemo(() => new THREE.MeshStandardMaterial({ color: SKIN_DARK, roughness: 0.55 }), []);
-  const hairMat = useMemo(() => new THREE.MeshStandardMaterial({ color: HAIR, roughness: 0.85 }), []);
-  const hairHiMat = useMemo(() => new THREE.MeshStandardMaterial({ color: HAIR_HI, roughness: 0.85 }), []);
+  // Hair uses a touch of anisotropy-ish gloss; standard mat with low roughness
+  // catches the rim light and reads as healthy hair instead of felt.
+  const hairMat = useMemo(() => new THREE.MeshStandardMaterial({ color: HAIR, roughness: 0.55, metalness: 0.05 }), []);
+  const hairHiMat = useMemo(() => new THREE.MeshStandardMaterial({ color: HAIR_HI, roughness: 0.5, metalness: 0.05 }), []);
   const blazerMat = useMemo(() => new THREE.MeshStandardMaterial({ color: BLAZER, roughness: 0.7 }), []);
   const blazerLightMat = useMemo(() => new THREE.MeshStandardMaterial({ color: BLAZER_LIGHT, roughness: 0.65 }), []);
   const blouseMat = useMemo(() => new THREE.MeshStandardMaterial({ color: BLOUSE, roughness: 0.5 }), []);
@@ -213,9 +241,12 @@ export function Teacher3D({ action, audioEl }: Props) {
       <Shoe side={-1} />
       <Leg side={1} material={tightsMat} />
       <Leg side={-1} material={tightsMat} />
-      {/* Knee-length A-line skirt */}
+      {/* Knee-length A-line skirt — frustum so the waist matches the torso's
+          bottom radius (0.16) and flares out at the hem (0.30). Closed top
+          prevents seeing through to the legs from above; the bottom is left
+          open so the legs stick out naturally. */}
       <mesh position={[0, 0.78, 0]} castShadow>
-        <coneGeometry args={[0.30, 0.34, 28, 1, true]} />
+        <cylinderGeometry args={[0.16, 0.30, 0.34, 28, 1, false]} />
         <primitive object={skirtMat} attach="material" />
       </mesh>
       {/* Belt accent */}
@@ -225,7 +256,10 @@ export function Teacher3D({ action, audioEl }: Props) {
       </mesh>
 
       {/* ===== Torso ===== */}
-      <group ref={torso} position={[0, 1.35, 0]}>
+      {/* Anchor sits directly on top of the belt (y=0.95) + half torso height
+          (0.21) so the blazer cylinder's bottom edge meets the belt without a
+          visible gap between waist and chest. */}
+      <group ref={torso} position={[0, 1.16, 0]}>
         {/* Slim body — narrower at the waist, broader at chest */}
         <mesh castShadow position={[0, 0, 0]}>
           <cylinderGeometry args={[0.205, 0.16, 0.42, 24]} />
@@ -290,35 +324,11 @@ export function Teacher3D({ action, audioEl }: Props) {
             <sphereGeometry args={[0.135, 32, 24]} />
             <primitive object={skinMat} attach="material" />
           </mesh>
-          {/* Cheek shading */}
-          <mesh position={[0, -0.075, 0.06]}>
-            <sphereGeometry args={[0.075, 16, 12]} />
-            <primitive object={skinDarkMat} attach="material" />
-          </mesh>
+          {/* (No chin/cheek shading sphere — it was the dark patch staining
+              the front of the face brown.) */}
 
-          {/* Hair: top cap */}
-          <mesh position={[0, 0.04, -0.005]} scale={[1.05, 1.18, 1.10]}>
-            <sphereGeometry args={[0.142, 32, 22, 0, Math.PI * 2, 0, Math.PI / 1.55]} />
-            <primitive object={hairMat} attach="material" />
-          </mesh>
-          {/* Side bang sweeping over the right side of the forehead */}
-          <mesh position={[0.06, 0.10, 0.105]} rotation={[0, -0.2, -0.45]}>
-            <boxGeometry args={[0.16, 0.06, 0.05]} />
-            <primitive object={hairHiMat} attach="material" />
-          </mesh>
-          {/* Long hair at the back & shoulders */}
-          <mesh position={[0, -0.05, -0.105]} rotation={[0.15, 0, 0]}>
-            <boxGeometry args={[0.27, 0.36, 0.10]} />
-            <primitive object={hairMat} attach="material" />
-          </mesh>
-          <mesh position={[-0.13, -0.10, -0.02]} rotation={[0, 0, 0.18]}>
-            <capsuleGeometry args={[0.045, 0.30, 8, 14]} />
-            <primitive object={hairMat} attach="material" />
-          </mesh>
-          <mesh position={[0.13, -0.10, -0.02]} rotation={[0, 0, -0.18]}>
-            <capsuleGeometry args={[0.045, 0.30, 8, 14]} />
-            <primitive object={hairMat} attach="material" />
-          </mesh>
+          {/* Hair (bob cut) — base scalp + ring of strand capsules. */}
+          <HairBob hairMat={hairMat} hairHiMat={hairHiMat} />
 
           {/* Eyebrows */}
           <mesh ref={eyebrowL} position={[-0.045, 0.115, 0.115]} rotation={[0, 0, 0.12]}>
@@ -334,34 +344,55 @@ export function Teacher3D({ action, audioEl }: Props) {
           <Eye groupRef={eyeL} x={-0.045} />
           <Eye groupRef={eyeR} x={0.045} />
 
-          {/* Slim glasses */}
-          <Glasses />
+          {/* Glasses removed: the dark rims around the larger sclera read as
+              a "mask" across the face on a small stylised character. */}
 
-          {/* Nose */}
-          <mesh position={[0, 0.018, 0.13]} rotation={[Math.PI / 2, 0, 0]}>
-            <coneGeometry args={[0.013, 0.05, 8]} />
-            <primitive object={skinDarkMat} attach="material" />
-          </mesh>
-          {/* Nostrils hint */}
-          <mesh position={[0, -0.005, 0.135]}>
-            <sphereGeometry args={[0.012, 12, 8]} />
-            <primitive object={skinDarkMat} attach="material" />
+          {/* Nose — same skin tone as the rest of the face so it doesn't
+              read as a brown blob from the front. */}
+          <mesh position={[0, 0.005, 0.128]} rotation={[Math.PI / 2, 0, 0]}>
+            <coneGeometry args={[0.012, 0.04, 10]} />
+            <primitive object={skinMat} attach="material" />
           </mesh>
 
-          {/* Mouth */}
-          <mesh ref={mouth} position={[0, -0.05, 0.122]} scale={[1, 0.55, 0.6]}>
+          {/* Lower lip — fuller, slightly redder. */}
+          <mesh ref={mouth} position={[0, -0.052, 0.122]} scale={[1, 0.55, 0.6]}>
             <sphereGeometry args={[0.024, 18, 10]} />
-            <meshStandardMaterial color={LIPS} roughness={0.45} />
+            <meshStandardMaterial color={LIPS} roughness={0.35} />
+          </mesh>
+          {/* Subtle smile arc (upper lip line). */}
+          <mesh position={[0, -0.04, 0.128]} rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[0.022, 0.0028, 8, 16, Math.PI]} />
+            <meshStandardMaterial color={LIPS} roughness={0.5} />
           </mesh>
 
-          {/* Earrings */}
-          <mesh position={[-0.135, -0.01, 0]}>
-            <sphereGeometry args={[0.011, 8, 6]} />
-            <meshStandardMaterial color={ACCENT} metalness={0.6} roughness={0.2} />
+          {/* Cheek blush — soft pink discs blended with skin. */}
+          <mesh position={[-0.085, -0.02, 0.108]}>
+            <sphereGeometry args={[0.024, 12, 10]} />
+            <meshStandardMaterial
+              color={BLUSH}
+              transparent
+              opacity={0.35}
+              roughness={0.7}
+            />
           </mesh>
-          <mesh position={[0.135, -0.01, 0]}>
-            <sphereGeometry args={[0.011, 8, 6]} />
-            <meshStandardMaterial color={ACCENT} metalness={0.6} roughness={0.2} />
+          <mesh position={[0.085, -0.02, 0.108]}>
+            <sphereGeometry args={[0.024, 12, 10]} />
+            <meshStandardMaterial
+              color={BLUSH}
+              transparent
+              opacity={0.35}
+              roughness={0.7}
+            />
+          </mesh>
+
+          {/* Earrings (positioned at the actual ear level, on the sides). */}
+          <mesh position={[-0.142, -0.025, 0.01]}>
+            <sphereGeometry args={[0.012, 12, 10]} />
+            <meshStandardMaterial color={ACCENT} metalness={0.7} roughness={0.18} />
+          </mesh>
+          <mesh position={[0.142, -0.025, 0.01]}>
+            <sphereGeometry args={[0.012, 12, 10]} />
+            <meshStandardMaterial color={ACCENT} metalness={0.7} roughness={0.18} />
           </mesh>
         </group>
       </group>
@@ -371,25 +402,85 @@ export function Teacher3D({ action, audioEl }: Props) {
 
 /* ============== sub-components ============== */
 
+/**
+ * Bob-cut hair: a scalp dome (sphere segment) plus a ring of capsule strands
+ * draped down to the jawline, with a side-bang sweep across the forehead.
+ * Each strand is its own capsule so the silhouette breaks up naturally instead
+ * of being a single boxy chunk.
+ */
+function HairBob({
+  hairMat,
+  hairHiMat,
+}: {
+  hairMat: THREE.Material;
+  hairHiMat: THREE.Material;
+}) {
+  // Three.js sphere parameterisation: phi sweeps around Y axis.
+  //   x = -r*cos(phi)*sin(theta), z = r*sin(phi)*sin(theta)
+  // → +Z (face direction) is at phi = π/2. Leave a 70° wedge open there for
+  //   the face; the rest of the sphere wraps the back, sides and top of the
+  //   head as a single continuous "bob" shell.
+  const FACE_GAP = Math.PI * 0.39; // ≈ 70°
+  const phiStart = Math.PI / 2 + FACE_GAP / 2;
+  const phiLength = Math.PI * 2 - FACE_GAP;
+
+  return (
+    <group>
+      {/* Main hair shell — covers top, sides and back of the head down past
+          the jawline as ONE solid surface (no individual strands → no
+          "sausage" silhouette, no scalp gaps). */}
+      <mesh position={[0, 0.02, -0.005]} scale={[1.10, 1.22, 1.12]} castShadow>
+        <sphereGeometry
+          args={[0.148, 48, 36, phiStart, phiLength, 0, Math.PI * 0.78]}
+        />
+        <primitive object={hairMat} attach="material" />
+      </mesh>
+
+      {/* Inner shell — same face cutout as the outer shell so it doesn't
+          drape across the forehead and look like brown skin. */}
+      <mesh position={[0, 0.02, -0.005]} scale={[1.04, 1.18, 1.07]}>
+        <sphereGeometry args={[0.144, 36, 24, phiStart, phiLength, 0, Math.PI * 0.55]} />
+        <primitive object={hairMat} attach="material" />
+      </mesh>
+
+      {/* Bangs removed — leaves the forehead clear so the skin tone matches
+          the rest of the face. The hair shell starts well above the brow line. */}
+    </group>
+  );
+}
+
 function Eye({ groupRef, x }: { groupRef: React.RefObject<THREE.Mesh>; x: number }) {
   return (
     <group position={[x, 0.045, 0.108]}>
+      {/* Sclera — slightly bigger so the iris reads cleanly even at distance. */}
       <mesh ref={groupRef}>
-        <sphereGeometry args={[0.022, 16, 12]} />
-        <meshStandardMaterial color="#ffffff" roughness={0.2} />
+        <sphereGeometry args={[0.030, 24, 18]} />
+        <meshStandardMaterial color="#fbf6ee" roughness={0.22} />
       </mesh>
-      <mesh position={[0, 0, 0.018]}>
-        <sphereGeometry args={[0.013, 16, 12]} />
-        <meshStandardMaterial color="#3a6b9a" />
+      {/* Iris — soft cool blue. Larger ratio (≈0.6 of sclera) makes the eye
+          look like a stylised cartoon eye instead of a thin slit. */}
+      <mesh position={[0, 0, 0.020]}>
+        <sphereGeometry args={[0.018, 22, 16]} />
+        <meshStandardMaterial color={IRIS} roughness={0.4} />
       </mesh>
-      <mesh position={[0, 0, 0.024]}>
-        <sphereGeometry args={[0.0055, 12, 8]} />
+      {/* Pupil. */}
+      <mesh position={[0, 0, 0.029]}>
+        <sphereGeometry args={[0.009, 16, 12]} />
         <meshStandardMaterial color={EYE_DARK} />
       </mesh>
-      {/* Eyelashes — thin dark strip on the upper lid */}
-      <mesh position={[0, 0.018, 0.018]}>
-        <boxGeometry args={[0.04, 0.004, 0.005]} />
-        <meshStandardMaterial color={EYE_DARK} />
+      {/* Catchlight — single most important detail for "alive" eyes. */}
+      <mesh position={[0.006, 0.006, 0.033]}>
+        <sphereGeometry args={[0.005, 12, 10]} />
+        <meshBasicMaterial color="#ffffff" />
+      </mesh>
+      {/* Soft upper eyelid arc — torus segment in the face plane (XY) framing
+          ONLY the top of the eye. Earlier this had rotation=[π/2,0,0] which
+          rotated it into the XZ plane, producing a "robber mask" band across
+          both eyes. Color is a desaturated brown, not pitch black, so it
+          reads as a lash line instead of war paint. */}
+      <mesh position={[0, 0.001, 0.028]}>
+        <torusGeometry args={[0.030, 0.0028, 8, 20, Math.PI]} />
+        <meshStandardMaterial color={'#3b2a3a'} roughness={0.7} />
       </mesh>
     </group>
   );
@@ -397,7 +488,8 @@ function Eye({ groupRef, x }: { groupRef: React.RefObject<THREE.Mesh>; x: number
 
 function Glasses() {
   return (
-    <group position={[0, 0.045, 0.115]}>
+    // Pushed forward so the rims don't intersect the now-larger sclera.
+    <group position={[0, 0.045, 0.150]}>
       <mesh position={[-0.045, 0, 0]} rotation={[Math.PI / 2, 0, 0]}>
         <torusGeometry args={[0.030, 0.0035, 8, 24]} />
         <meshStandardMaterial color="#1a1f33" metalness={0.7} roughness={0.3} />

@@ -176,14 +176,21 @@ export function AnimatedTeacher() {
                 style={{ animation: 'blink 4s ease-in-out infinite' }}
               />
             </g>
-            {/* mouth (talks) */}
+            {/* mouth (talks). transform-box: fill-box anchors scaleY around
+                the ellipse's own centre instead of the SVG origin (0,0) —
+                otherwise the mouth jumps to the top of the canvas during the
+                "talk" keyframes. */}
             <ellipse
               cx="120"
               cy="204"
               rx="5"
               ry="3"
               fill="#3a1f2c"
-              style={{ animation: 'talk 0.6s ease-in-out infinite' }}
+              style={{
+                animation: 'talk 0.6s ease-in-out infinite',
+                transformBox: 'fill-box',
+                transformOrigin: 'center',
+              }}
             />
           </g>
         </g>
@@ -197,6 +204,13 @@ export function AnimatedTeacher() {
       </svg>
 
       <style jsx>{`
+        /* Anchor every SVG transform around the element's own bounding box.
+           Without this, scaleY/rotate on <ellipse>/<rect>/<g> snap to the SVG
+           origin (0,0) and visually jump across the canvas. */
+        :global(svg [style*="animation"]) {
+          transform-box: fill-box;
+          transform-origin: center;
+        }
         @keyframes chalk1 { 0%,12% {stroke-dashoffset: 80} 30%,80% {stroke-dashoffset: 0} 90%,100% {stroke-dashoffset: 80} }
         @keyframes chalk2 { 0%,18% {stroke-dashoffset: 160} 38%,80% {stroke-dashoffset: 0} 92%,100% {stroke-dashoffset: 160} }
         @keyframes chalk3 { 0%,28% {stroke-dashoffset: 260} 52%,80% {stroke-dashoffset: 0} 95%,100% {stroke-dashoffset: 260} }

@@ -19,6 +19,7 @@ import { GlassButton } from '@/components/GlassButton';
 import { AnimatedTeacher } from '@/components/AnimatedTeacher';
 import { AuthModal } from '@/components/AuthModal';
 import { VsaLogo } from '@/components/VsaLogo';
+import { SplashIntro } from '@/components/SplashIntro';
 import { EGE_TASKS } from '@/lib/ege-tasks';
 
 export default function Landing() {
@@ -27,6 +28,7 @@ export default function Landing() {
 
   return (
     <main className="relative mx-auto max-w-7xl px-5 pb-24 pt-6 md:px-8 md:pt-10">
+      <SplashIntro />
       {/* Top bar */}
       <header className="flex items-center gap-3">
         <Link href="/" className="flex items-center gap-2">
@@ -117,7 +119,7 @@ export default function Landing() {
             </span>
             <span className="flex items-center gap-2">
               <CheckCircle2 size={16} className="text-aurora-1" /> Бесконечная
-              практика от Mistral AI
+              практика от Viora AI
             </span>
           </div>
         </div>
@@ -140,7 +142,7 @@ export default function Landing() {
         <Feature
           icon={<Wand2 size={20} strokeWidth={1.5} />}
           title="ИИ-генерация задач"
-          text="Mistral AI создаёт новую задачу любого из 19 номеров. Ответ проверяется автоматически."
+          text="Viora AI создаёт новую задачу любого из 19 номеров. Ответ проверяется автоматически."
         />
         <Feature
           icon={<Trophy size={20} strokeWidth={1.5} />}
@@ -209,21 +211,26 @@ export default function Landing() {
       </section>
 
       {/* Footer */}
-      <footer className="mt-24 flex flex-col items-center gap-1 text-xs text-text-muted">
-        <div>© {new Date().getFullYear()} Viora Smart Academy · VSA</div>
-        <div className="flex gap-3">
-          <Link href="/how-it-works" className="hover:text-text-primary">
-            О сервисе
-          </Link>
-          <span>·</span>
-          <Link href="/pricing" className="hover:text-text-primary">
-            Тарифы
-          </Link>
-          <span>·</span>
-          <Link href="/lesson/pythagoras" className="hover:text-text-primary">
-            Демо-урок
-          </Link>
-        </div>
+      <footer className="mt-24 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-xs text-text-muted">
+        <span>© {new Date().getFullYear()} Viora Smart Academy · VSA</span>
+        <span className="hidden sm:inline opacity-40">|</span>
+        <Link href="/how-it-works" className="hover:text-text-primary">
+          О сервисе
+        </Link>
+        <span className="opacity-40">·</span>
+        <Link href="/pricing" className="hover:text-text-primary">
+          Тарифы
+        </Link>
+        <span className="opacity-40">·</span>
+        <Link href="/lesson/pythagoras" className="hover:text-text-primary">
+          Демо-урок
+        </Link>
+        <span
+          className="ml-1 inline-flex items-center rounded-full border border-white/10 bg-white/[0.05] px-2 py-0.5 font-mono text-[10px] tracking-wider text-text-muted/90 backdrop-blur-sm"
+          title="Версия сборки"
+        >
+          v.00.01.0
+        </span>
       </footer>
 
       <AuthModal

@@ -4,7 +4,10 @@ import { headers } from 'next/headers';
 import { prisma } from './prisma';
 import { sha256Hex } from './utils';
 
-const PWD_SALT = process.env.NEXTAUTH_SECRET ?? 'vsa-salt';
+// Fixed salt — keeps password hashes stable between seed and runtime regardless
+// of which terminal / env-loading path was used. NOT real security; this is a
+// demo deployment. For production, switch to bcrypt/argon2 + per-user salt.
+const PWD_SALT = 'vsa-fixed-salt-do-not-change';
 
 export async function hashPassword(plain: string): Promise<string> {
   return sha256Hex(`${PWD_SALT}::${plain}`);
@@ -27,37 +30,31 @@ export interface AppUser {
 }
 
 /**
- * Read role+plan via RAW SQL — required because the Prisma client may be
- * stale on the user's machine (Windows EPERM during `prisma generate` is
- * common when the dev server is running). Raw SQL always sees the actual
- * SQLite columns.
+ * Read role+plan via Prisma Client. Works on any provider (SQLite/Postgres/...).
+ * Falls back to safe defaults if the row is missing or the client is mid-generate.
  */
 export async function getRoleAndPlan(userId: string): Promise<{ role: string; plan: string }> {
   try {
-    const rows = await prisma.$queryRawUnsafe<
-      Array<{ role: string | null; plan: string | null }>
-    >('SELECT role, plan FROM "User" WHERE id = $1 LIMIT 1', userId);
+    const u = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true, plan: true },
+    });
     return {
-      role: rows[0]?.role ?? 'user',
-      plan: rows[0]?.plan ?? 'free',
+      role: u?.role ?? 'user',
+      plan: u?.plan ?? 'free',
     };
   } catch {
     return { role: 'user', plan: 'free' };
   }
 }
 
-/** Force a user's role/plan via RAW SQL. Used by admin self-heal. */
+/** Force a user's role/plan. Used by admin self-heal and demo guard. */
 export async function forceRoleAndPlan(
   userId: string,
   role: string,
   plan: string,
 ): Promise<void> {
-  await prisma.$executeRawUnsafe(
-    'UPDATE "User" SET role = $1, plan = $2 WHERE id = $3',
-    role,
-    plan,
-    userId,
-  );
+  await prisma.user.update({ where: { id: userId }, data: { role, plan } });
 }
 
 export async function getCurrentUser(): Promise<AppUser> {

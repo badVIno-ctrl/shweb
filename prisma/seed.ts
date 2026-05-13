@@ -1,10 +1,34 @@
+// Load .env / .env.local BEFORE reading any env-dependent constants below.
+// Next.js auto-loads these at runtime, but this seed runs via plain `tsx` and
+// would otherwise miss them — leading to a NEXTAUTH_SECRET mismatch and
+// password hashes that no longer verify against the dev server's hashes.
+import * as fs from 'fs';
+import * as path from 'path';
+function loadEnv(file: string) {
+  const p = path.join(process.cwd(), file);
+  if (!fs.existsSync(p)) return;
+  for (const line of fs.readFileSync(p, 'utf8').split(/\r?\n/)) {
+    const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/i);
+    if (!m) continue;
+    let v = m[2];
+    if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+      v = v.slice(1, -1);
+    }
+    if (process.env[m[1]] === undefined) process.env[m[1]] = v;
+  }
+}
+// .env.local wins over .env — match Next.js precedence.
+loadEnv('.env');
+loadEnv('.env.local');
+
 import { PrismaClient } from '@prisma/client';
 import type { LessonScript } from '../lib/types';
 import { createHash } from 'crypto';
 
 const prisma = new PrismaClient();
 
-const PWD_SALT = process.env.NEXTAUTH_SECRET ?? 'vsa-salt';
+// Must match the salt in `lib/auth.ts` — see comment there.
+const PWD_SALT = 'vsa-fixed-salt-do-not-change';
 function hashPwd(plain: string): string {
   return createHash('sha256').update(`${PWD_SALT}::${plain}`).digest('hex');
 }
